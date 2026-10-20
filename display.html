@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cash Flow Challenge</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/display.css">
+</head>
+<body class="display">
+  <main id="pick" class="center-screen hidden">
+    <form id="pickForm" class="sheet narrow">
+      <h1>Big-screen display</h1>
+      <div class="field"><label for="pCode">Game code</label><input id="pCode" maxlength="6" autocapitalize="characters" required></div>
+      <p id="pickErr" class="err"></p>
+      <button class="btn-mark" type="submit">Show game</button>
+    </form>
+  </main>
+
+  <div id="screen" class="hidden">
+    <header class="dbar">
+      <div class="dbar-join"><span>Join at</span> <strong id="dUrl"></strong> <span>with code</span> <strong id="dCode" class="code"></strong></div>
+      <div class="dbar-mid"><span id="dYear"></span><span id="dPhase" class="phase"></span></div>
+      <div class="dbar-right"><span id="dRate"></span><span id="dTimer" class="dtimer hidden"></span></div>
+    </header>
+    <main id="stage"></main>
+  </div>
+
+  <div id="eventOverlay" class="event-overlay hidden" role="alert"></div>
+
+  <script type="module" src="js/display.js"></script>
+</body>
+</html>

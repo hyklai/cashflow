@@ -1,0 +1,168 @@
+/* Engineering-pad look: pale green computation paper, ink-navy type,
+   green up arrows (money in), red down arrows (money out), and a yellow
+   highlighter for whatever needs attention. Dark mode is a chalkboard. */
+
+:root {
+  --paper: #e9f0df;
+  --grid: #d3e0c4;
+  --sheet: #f8fbf3;
+  --ink: #1d2a44;
+  --ink-soft: #56637b;
+  --line: #bccbab;
+  --in: #17794a;
+  --out: #c03a26;
+  --mark: #f5d547;
+  --mark-ink: #1d2a44;
+  --focus: #2f6fd6;
+  --shadow: 0 1px 0 #bccbab;
+  --radius: 8px;
+  --font: 'Archivo', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: #1e2c25;
+    --grid: #26372e;
+    --sheet: #24352d;
+    --ink: #eef2e6;
+    --ink-soft: #a7b6a8;
+    --line: #3b4f44;
+    --in: #6fd69a;
+    --out: #ff8f78;
+    --mark: #f2d544;
+    --mark-ink: #1d2a44;
+    --focus: #8fb7ff;
+    --shadow: 0 1px 0 #13201a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --paper: #1e2c25; --grid: #26372e; --sheet: #24352d; --ink: #eef2e6; --ink-soft: #a7b6a8;
+  --line: #3b4f44; --in: #6fd69a; --out: #ff8f78; --mark: #f2d544; --mark-ink: #1d2a44;
+  --focus: #8fb7ff; --shadow: 0 1px 0 #13201a; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-variation-settings: 'wdth' 100;
+  color: var(--ink);
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 20px 20px;
+  background-attachment: fixed;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+h1, h2, h3 { font-variation-settings: 'wdth' 112; line-height: 1.15; margin: 0 0 .4em; }
+h1 { font-size: 1.6rem; font-weight: 800; }
+h2 { font-size: 1.2rem; font-weight: 750; }
+h3 { font-size: 1rem; font-weight: 700; }
+p { margin: 0 0 .6em; }
+a { color: inherit; }
+small, .soft { color: var(--ink-soft); }
+.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pos { color: var(--in); }
+.neg { color: var(--out); }
+.hidden { display: none !important; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+.sheet {
+  background: var(--sheet);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+/* ---------- controls */
+button, .btn {
+  font: inherit;
+  font-weight: 650;
+  border-radius: 6px;
+  border: 1.5px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+  padding: 10px 16px;
+  min-height: 44px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+button:disabled { opacity: .45; cursor: not-allowed; }
+.btn-ink { background: var(--ink); color: var(--paper); }
+.btn-mark { background: var(--mark); color: var(--mark-ink); border-color: var(--mark-ink); }
+.btn-quiet { border-color: var(--line); font-weight: 550; }
+.btn-danger { border-color: var(--out); color: var(--out); }
+.btn-sm { min-height: 34px; padding: 4px 10px; font-size: .88rem; }
+.btn-block { width: 100%; }
+
+label { font-weight: 600; font-size: .92rem; display: block; margin-bottom: 4px; }
+input, select, textarea {
+  font: inherit;
+  color: var(--ink);
+  background: var(--sheet);
+  border: 1.5px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  min-height: 44px;
+  width: 100%;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--ink); outline: none; }
+.field { margin-bottom: 14px; }
+.hint { font-size: .85rem; color: var(--ink-soft); margin-top: 4px; }
+.err { color: var(--out); font-weight: 600; min-height: 1.4em; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.spread { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+
+.pill {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  border: 1px solid var(--line); font-size: .8rem; font-weight: 600; white-space: nowrap;
+}
+.pill-open { background: var(--mark); color: var(--mark-ink); border-color: var(--mark-ink); }
+.tag { font-size: .78rem; color: var(--ink-soft); font-weight: 600; font-variation-settings: 'wdth' 85; }
+
+/* highlighter swipe: the one decorative device, used for "you" and first place */
+.hl {
+  background-image: linear-gradient(100deg, transparent 0 2%, var(--mark) 3% 96%, transparent 97%);
+  color: var(--mark-ink);
+  border-radius: 3px;
+  padding: 0 .25em;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone;
+}
+
+/* ---------- cash-flow diagrams */
+.cfd { width: 100%; height: auto; display: block; overflow: visible; }
+.cfd text { font-family: var(--font); font-weight: 650; fill: currentColor; }
+.cfd .cfd-axis { stroke: var(--ink); stroke-width: 1.5; }
+.cfd .cfd-axis-head { fill: var(--ink); }
+.cfd .cfd-tick { stroke: var(--ink); stroke-width: 1.2; }
+.cfd .cfd-time { fill: var(--ink-soft); font-weight: 500; }
+.cfd .cfd-in { color: var(--in); }
+.cfd .cfd-out { color: var(--out); }
+.cfd .cfd-in line, .cfd .cfd-out line { stroke: currentColor; }
+.cfd .cfd-in path, .cfd .cfd-out path { fill: currentColor; }
+.cfd .cfd-past { opacity: .28; }
+
+.flow-table { border-collapse: collapse; font-size: .88rem; margin-top: 8px; }
+.flow-table th, .flow-table td { padding: 3px 12px 3px 0; text-align: right; border-bottom: 1px solid var(--line); }
+.flow-table th { font-weight: 600; color: var(--ink-soft); }
+
+/* ---------- toasts & banners */
+#toasts { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 50; display: grid; gap: 8px; width: min(92vw, 420px); }
+.toast { background: var(--ink); color: var(--paper); padding: 12px 16px; border-radius: 6px; font-weight: 600; }
+.toast-error { background: var(--out); color: #fff; }
+.demo-banner {
+  background: var(--mark); color: var(--mark-ink); text-align: center; font-size: .85rem;
+  padding: 6px 12px; font-weight: 600; border-bottom: 1.5px solid var(--mark-ink);
+}
+.center-screen { min-height: 100svh; display: grid; place-items: center; padding: 20px; }
+.narrow { width: min(100%, 420px); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

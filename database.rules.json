@@ -1,0 +1,49 @@
+{
+  "rules": {
+    "teachers": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid && auth.provider !== 'anonymous'"
+      }
+    },
+    "games": {
+      "$code": {
+        "meta": {
+          ".read": "auth != null",
+          ".write": "auth != null && auth.provider !== 'anonymous' && (data.exists() ? data.child('owner').val() === auth.uid : newData.child('owner').val() === auth.uid)"
+        },
+        "catalog": {
+          ".read": "auth != null",
+          ".write": "auth != null && root.child('games').child($code).child('meta/owner').val() === auth.uid"
+        },
+        "players": {
+          ".read": "auth != null",
+          ".write": "auth != null && root.child('games').child($code).child('meta/owner').val() === auth.uid"
+        },
+        "joins": {
+          ".read": "auth != null && root.child('games').child($code).child('meta/owner').val() === auth.uid",
+          "$pid": {
+            ".read": "auth != null && data.child('uid').val() === auth.uid",
+            ".write": "auth != null && root.child('games').child($code).child('meta').exists() && (root.child('games').child($code).child('meta/owner').val() === auth.uid || (newData.child('uid').val() === auth.uid && (data.exists() ? newData.child('pinHash').val() === data.child('pinHash').val() : root.child('games').child($code).child('meta/allowJoin').val() === true)))",
+            ".validate": "$pid.matches(/^[a-z0-9]{1,16}$/) && newData.hasChildren(['name', 'pinHash', 'uid']) && newData.child('name').isString() && newData.child('name').val().length >= 1 && newData.child('name').val().length <= 16 && newData.child('pinHash').isString() && newData.child('pinHash').val().length === 64"
+          }
+        },
+        "orders": {
+          ".read": "auth != null && root.child('games').child($code).child('meta/owner').val() === auth.uid",
+          ".write": "auth != null && root.child('games').child($code).child('meta/owner').val() === auth.uid",
+          "$pid": {
+            ".read": "auth != null && root.child('games').child($code).child('joins').child($pid).child('uid').val() === auth.uid",
+            ".write": "auth != null && root.child('games').child($code).child('joins').child($pid).child('uid').val() === auth.uid && root.child('games').child($code).child('meta/status').val() === 'open'",
+            ".validate": "!newData.exists() || (newData.hasChildren(['round']) && newData.child('round').isNumber())"
+          }
+        },
+        "presence": {
+          ".read": "auth != null",
+          "$pid": {
+            ".write": "auth != null && (root.child('games').child($code).child('joins').child($pid).child('uid').val() === auth.uid || root.child('games').child($code).child('meta/owner').val() === auth.uid)"
+          }
+        }
+      }
+    }
+  }
+}

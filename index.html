@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cash Flow Challenge</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .home { max-width: 760px; margin: 0 auto; padding: 48px 20px; }
+    .home h1 { font-size: clamp(2.2rem, 7vw, 3.6rem); font-variation-settings: 'wdth' 120; margin-bottom: .2em; }
+    .home .cfd { max-width: 520px; margin: 8px 0 28px; }
+    .doors { display: grid; gap: 12px; }
+    .doors a { display: grid; grid-template-columns: 1fr auto; align-items: center; text-decoration: none; padding: 18px 20px; }
+    .doors a b { font-size: 1.25rem; font-variation-settings: 'wdth' 112; }
+    .doors a span { color: var(--ink-soft); grid-column: 1; }
+    .doors a.primary { border: 2px solid var(--ink); }
+  </style>
+</head>
+<body>
+  <div id="demo" class="demo-banner hidden">Demo mode: Firebase is not set up yet, so games only work inside this browser. See README.md.</div>
+  <main class="home">
+    <h1>Cash Flow Challenge</h1>
+    <p>An engineering economics game. Students invest a starting fund in savings, bonds and projects, then compete on net worth as the years go by.</p>
+    <div id="hero"></div>
+    <nav class="doors">
+      <a class="sheet primary" id="toStudent" href="student.html"><b>I'm a student</b><span>Join with the code on the big screen.</span></a>
+      <a class="sheet" id="toDisplay" href="display.html"><b>Big-screen display</b><span>For the projector.</span></a>
+      <a class="sheet" id="toTeacher" href="teacher.html"><b>Teacher console</b><span>Create a game and control the pace.</span></a>
+    </nav>
+  </main>
+  <script type="module">
+    import { DEMO } from './js/backend.js';
+    import { cfdSVG } from './js/cfd.js';
+    document.getElementById('hero').innerHTML = cfdSVG([-2000, 600, 600, 600, 1000], { title: 'Example cash-flow diagram' });
+    if (DEMO) {
+      document.getElementById('demo').classList.remove('hidden');
+      for (const id of ['toStudent', 'toDisplay', 'toTeacher']) {
+        const a = document.getElementById(id); a.href += '?demo=1';
+      }
+    }
+  </script>
+</body>
+</html>

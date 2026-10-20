@@ -1,0 +1,96 @@
+/* Phone-first student screen */
+body.student { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+
+.topbar {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 10px 16px;
+  background: var(--sheet);
+  border-bottom: 1.5px solid var(--ink);
+}
+.topbar .who { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.topbar .who strong { font-variation-settings: 'wdth' 112; font-size: 1.05rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar .who span { font-size: .85rem; }
+.tb-right { display: flex; align-items: center; gap: 8px; }
+.timer { font-weight: 800; font-size: 1.1rem; font-variation-settings: 'wdth' 112; }
+.timer.late { color: var(--out); }
+
+.tab { padding: 16px; max-width: 640px; margin: 0 auto; display: grid; gap: 14px; }
+.intro p { margin: 0; }
+.section-title { margin: 8px 0 -4px; }
+
+.offer h3 { margin: 0; font-size: 1.1rem; }
+.offer-head { align-items: flex-start; }
+.price { text-align: right; display: flex; flex-direction: column; line-height: 1.1; }
+.price .num { font-size: 1.2rem; font-weight: 750; font-variation-settings: 'wdth' 112; }
+.price small { font-size: .78rem; }
+.blurb { margin: 8px 0 4px; font-size: .95rem; }
+.cfd-wrap { margin: 4px -6px 0; }
+details summary { cursor: pointer; font-size: .88rem; color: var(--ink-soft); padding: 6px 0; min-height: 32px; }
+.offer.chosen { border-color: var(--ink); border-width: 2px; padding: 15px; }
+
+.stepper { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.stepper button { width: 48px; height: 48px; padding: 0; font-size: 1.5rem; line-height: 1; }
+.stepper .plus { background: var(--ink); color: var(--paper); }
+.stepper .qty { min-width: 2ch; text-align: center; font-size: 1.4rem; font-weight: 800; }
+.stepper .cost { margin-left: auto; font-weight: 600; }
+
+.seg { display: grid; grid-template-columns: 1fr 1fr; border: 1.5px solid var(--ink); border-radius: 6px; overflow: hidden; margin: 8px 0 12px; }
+.seg button { border: 0; border-radius: 0; min-height: 44px; font-weight: 600; }
+.seg button + button { border-left: 1.5px solid var(--ink); }
+.seg button[aria-checked='true'] { background: var(--ink); color: var(--paper); }
+
+/* sticky plan summary above the tab bar */
+.planbar {
+  position: fixed; left: 0; right: 0; bottom: calc(56px + env(safe-area-inset-bottom)); z-index: 9;
+  background: var(--sheet); border-top: 1.5px solid var(--ink);
+  padding: 8px 12px 10px; display: grid; gap: 6px;
+  box-shadow: 0 -6px 16px rgba(29, 42, 68, .12);
+}
+.planbar.offtab { display: none; }
+.plan-nums { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; text-align: center; }
+.plan-nums div { display: flex; flex-direction: column; line-height: 1.15; }
+.plan-nums small { font-size: .72rem; }
+.plan-nums .num { font-weight: 750; font-size: .98rem; }
+.plan-nums .idle { color: var(--out); }
+.plan-act { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.plan-state { font-size: .82rem; color: var(--ink-soft); }
+.plan-state.ok { color: var(--in); font-weight: 650; }
+body.student:has(.planbar:not(.hidden):not(.offtab)) .tab { padding-bottom: 150px; }
+
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  background: var(--ink); padding-bottom: env(safe-area-inset-bottom);
+}
+.tabbar button {
+  border: 0; border-radius: 0; color: var(--paper); opacity: .7; min-height: 56px; font-weight: 650;
+}
+.tabbar button.on { opacity: 1; box-shadow: inset 0 -4px 0 var(--mark); }
+
+.lines { list-style: none; padding: 0; margin: 8px 0 12px; }
+.lines li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px dashed var(--line); }
+.summary, .breakdown { display: grid; gap: 4px; margin: 10px 0; }
+.summary div, .breakdown div { display: flex; justify-content: space-between; gap: 10px; }
+.summary dt, .breakdown dt { color: var(--ink-soft); }
+.summary dd, .breakdown dd { margin: 0; font-weight: 700; }
+
+.big { font-size: 2.4rem; font-weight: 800; font-variation-settings: 'wdth' 118; margin: 0; line-height: 1.1; }
+.networth small { font-weight: 600; }
+.spark { width: 100%; height: 60px; color: var(--ink); margin: 6px 0; }
+.holding h3 { margin: 0; }
+.holding .cfd { margin-top: 6px; }
+
+.ranklist { list-style: none; padding: 0; margin: 8px 0 0; }
+.ranklist li { display: grid; grid-template-columns: 2.4ch 1fr auto; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); align-items: center; }
+.ranklist .place { font-weight: 800; text-align: right; }
+.ranklist li.me { font-weight: 700; }
+.final .big { margin: 6px 0 10px; }
+.news { margin: 12px 16px 0; padding: 10px 14px; border: 1.5px solid var(--mark-ink); background: var(--mark); color: var(--mark-ink); border-radius: 6px; max-width: 608px; }
+@media (min-width: 672px) { .news { margin: 12px auto 0; } }
+.news span { display: block; font-size: .9rem; }
+body.student #toasts { top: 72px; bottom: auto; }
+.news .news-mine { margin: 8px 0 0; font-weight: 650; font-size: .88rem; }
+.news .lines { margin: 2px 0 0; }
+.news .lines li { border-color: var(--mark-ink); padding: 4px 0; font-size: .9rem; }
+.news .lines .pos, .news .lines .neg { color: var(--mark-ink); font-weight: 750; }
