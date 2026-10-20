@@ -42,12 +42,16 @@
           <div class="field"><label for="gYears">Years in the game</label><input id="gYears" type="number" min="2" max="15" value="8"></div>
           <div class="field"><label for="gRate">Bank savings rate (%)</label><input id="gRate" type="number" min="0" max="20" step="0.5" value="5"></div>
           <div class="field"><label for="gOd">Overdraft rate (%)</label><input id="gOd" type="number" min="0" max="40" step="1" value="15"></div>
+          <div class="field"><label for="gPen">Savings withdrawal penalty (%)</label><input id="gPen" type="number" min="0" max="25" step="1" value="5"></div>
+          <div class="field"><label for="gOffers">Investments offered each year</label><input id="gOffers" type="number" min="2" max="6" value="4"></div>
         </div>
-        <p class="hint">The bank rate is the interest rate students should use for PW, FW and AW. Investments are valued at this rate.</p>
+        <p class="hint">The bank rate is the interest rate students should use for PW, FW and AW. Investments are valued at this rate.
+          The penalty is charged on any money taken out of savings, so savings only pay off for money left in for 2 years or more.</p>
         <button class="btn-mark" type="submit">Create game</button>
       </form>
       <div class="sheet">
-        <h2>Resume a game</h2>
+        <h2>Your saved games</h2>
+        <p class="hint">Delete games you no longer need. This removes the game and every student's data for good.</p>
         <ul id="gameList" class="game-list"></ul>
       </div>
     </div>
@@ -87,7 +91,7 @@
             </div>
             <div class="field"><label for="coBlurb">Description students see</label><input id="coBlurb" maxlength="160"></div>
             <p id="coErr" class="err"></p>
-            <button class="btn-ink btn-sm" type="submit">Add to next market</button>
+            <button class="btn-ink btn-sm" type="submit">Add to the market</button>
           </form>
         </details>
       </section>
@@ -102,18 +106,11 @@
             <div class="field"><label for="ceKind">Type</label>
               <select id="ceKind">
                 <option value="cash">Everyone gains or pays cash</option>
-                <option value="perShare">Pay or charge per share of a category</option>
-                <option value="revenue">Change future earnings of a category</option>
                 <option value="rate">Change the bank rate</option>
               </select></div>
-            <div class="field ce-tags"><label>Categories</label><div id="ceTags" class="row"></div></div>
-            <div class="two">
-              <div class="field ce-amount"><label for="ceAmount">Amount ($, negative = pay)</label><input id="ceAmount" type="number" step="50" value="-500"></div>
-              <div class="field ce-factor"><label for="ceFactor">Earnings change (%)</label><input id="ceFactor" type="number" step="5" value="-20"></div>
-              <div class="field ce-delta"><label for="ceDelta">Rate change (points)</label><input id="ceDelta" type="number" step="0.5" value="1"></div>
-              <div class="field ce-dur"><label for="ceDur">Lasts</label><select id="ceDur"><option value="next">Next year only</option><option value="rest">Rest of the game</option></select></div>
-            </div>
-            <div class="field"><label for="ceTitle">Headline</label><input id="ceTitle" maxlength="50" placeholder="Hurricane hits the coast"></div>
+            <div class="field ce-amount"><label for="ceAmount">Amount ($, negative = pay)</label><input id="ceAmount" type="number" step="50" value="-300"></div>
+            <div class="field ce-delta"><label for="ceDelta">Rate change (percentage points)</label><input id="ceDelta" type="number" step="0.5" value="1"></div>
+            <div class="field"><label for="ceTitle">Headline</label><input id="ceTitle" maxlength="50" placeholder="Medical bill"></div>
             <div class="field"><label for="ceDetail">Explanation</label><input id="ceDetail" maxlength="160"></div>
             <button class="btn-ink btn-sm" type="submit">Fire event</button>
           </form>
@@ -128,7 +125,7 @@
         <div class="screen-ctl">
           <div class="field"><label for="rankBy">Rank on the big screen by</label><select id="rankBy"></select></div>
           <div class="field"><label for="viewSel">Big screen shows</label>
-            <select id="viewSel"><option value="auto">Automatic</option><option value="board">Leaderboard</option><option value="market">Market and diagrams</option></select></div>
+            <select id="viewSel"><option value="auto">Automatic</option><option value="top5">Top 5 in every category</option><option value="board">Leaderboard with values</option><option value="market">Market and diagrams</option></select></div>
         </div>
         <div class="row timer-row">
           <span class="soft">Timer</span>
@@ -148,6 +145,7 @@
           <button id="csvBtn" class="btn-quiet btn-sm">Download results (CSV)</button>
           <button id="endNow" class="btn-danger btn-sm">End game now</button>
           <button id="backToGames" class="btn-quiet btn-sm">All games</button>
+          <button id="deleteGame" class="btn-danger btn-sm">Delete game</button>
         </div>
       </section>
     </div>

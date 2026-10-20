@@ -52,7 +52,7 @@ details summary { cursor: pointer; font-size: .88rem; color: var(--ink-soft); pa
 .plan-nums div { display: flex; flex-direction: column; line-height: 1.15; }
 .plan-nums small { font-size: .72rem; }
 .plan-nums .num { font-weight: 750; font-size: .98rem; }
-.plan-nums .idle { color: var(--out); }
+.plan-nums .fee { color: var(--out); }
 .plan-act { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
 .plan-state { font-size: .82rem; color: var(--ink-soft); }
 .plan-state.ok { color: var(--in); font-weight: 650; }

@@ -5,9 +5,9 @@ import { createBackend, DEMO } from './backend.js';
 import { watchGame, STATUS_TEXT, joinUrl } from './game.js';
 import {
   applyOrder, yearEnd, applyCash, revalue, normPlayer, offerMetrics, unitPrice,
-  sharesWithTags, RANKINGS, r2,
+  drawOffers, RANKINGS, r2,
 } from './engine.js';
-import { DEFAULT_OFFERS, DEFAULT_SETTINGS, EVENT_PRESETS, TAG_LABELS, defaultOfferIdsForYear } from './catalog.js';
+import { DEFAULT_OFFERS, DEFAULT_SETTINGS, EVENT_PRESETS, TAG_LABELS, resolveEvent } from './catalog.js';
 import { $, $$, esc, money, pct, genCode, randomId, pinHash, fmtClock, toast } from './util.js';
 
 let B, S = null, code = null;
@@ -70,14 +70,41 @@ $('#signOut').onclick = async () => { await B.signOut(); show('login'); };
 
 async function showGames() {
   if (S) { S.stop(); S = null; }
+  code = null;
   show('games');
   const list = (await B.get(`teachers/${B.uid}/games`).catch(() => null)) || {};
   const items = Object.entries(list).sort((a, b) => b[1].createdAt - a[1].createdAt);
-  $('#gameList').innerHTML = items.length
-    ? items.map(([c, g]) => `<li><button class="btn-quiet" data-code="${esc(c)}"><b>${esc(c)}</b> ${esc(g.title || '')}
-        <span class="soft">${new Date(g.createdAt).toLocaleDateString()}</span></button></li>`).join('')
-    : '<li class="soft">No games yet.</li>';
-  for (const b of $$('#gameList button')) b.onclick = () => openConsole(b.dataset.code);
+  const metas = await Promise.all(items.map(([c]) => B.get(`games/${c}/meta`).catch(() => null)));
+  // Drop list entries whose game no longer exists.
+  items.forEach(([c], i) => { if (!metas[i]) B.remove(`teachers/${B.uid}/games/${c}`).catch(() => {}); });
+  const live = items.map((it, i) => [...it, metas[i]]).filter(([, , m]) => m);
+  const statusLine = (m) => m.status === 'lobby' ? 'Not started'
+    : m.status === 'ended' ? 'Finished' : `Year ${m.year} of ${m.settings?.years ?? '?'}`;
+  $('#gameList').innerHTML = live.length
+    ? live.map(([c, g, m]) => `<li class="game-row">
+        <button class="btn-quiet open" data-code="${esc(c)}"><b>${esc(c)}</b> <span class="gt">${esc(g.title || '')}</span>
+          <span class="soft">${statusLine(m)} · ${new Date(g.createdAt).toLocaleDateString()}</span></button>
+        <button class="btn-danger btn-sm del" data-del="${esc(c)}" aria-label="Delete game ${esc(c)}">Delete</button></li>`).join('')
+    : '<li class="soft">No saved games.</li>';
+  for (const b of $$('#gameList [data-code]')) b.onclick = () => openConsole(b.dataset.code);
+  for (const b of $$('#gameList [data-del]')) b.onclick = () => deleteGame(b.dataset.del);
+}
+
+async function deleteGame(c) {
+  if (!confirm(`Delete game ${c}? Every student's money and history in it is erased. This cannot be undone.`)) return;
+  if (code === c && S) { S.stop(); S = null; }
+  try {
+    await B.remove(`games/${c}`);
+    await B.remove(`teachers/${B.uid}/games/${c}`);
+    if (localStorage.getItem('eegame-teacher-last') === c) localStorage.removeItem('eegame-teacher-last');
+    toast(`Game ${c} deleted.`);
+  } catch (e) {
+    toast(`Could not delete: ${e.message || e}. Did you publish the latest database.rules.json?`, 'error', 6000);
+  }
+  if (code === c) {
+    history.replaceState(null, '', location.pathname + (DEMO ? '?demo=1' : ''));
+  }
+  showGames();
 }
 
 $('#newGame').addEventListener('submit', async (e) => {
@@ -87,6 +114,8 @@ $('#newGame').addEventListener('submit', async (e) => {
     years: Math.min(15, Math.max(2, Math.round(Number($('#gYears').value) || DEFAULT_SETTINGS.years))),
     bankRate: Math.max(0, Number($('#gRate').value) / 100),
     overdraftRate: Math.max(0, Number($('#gOd').value) / 100),
+    withdrawPenalty: Math.min(0.25, Math.max(0, Number($('#gPen').value) / 100)),
+    offersPerYear: Math.min(6, Math.max(2, Math.round(Number($('#gOffers').value) || DEFAULT_SETTINGS.offersPerYear))),
   };
   const title = $('#gTitle').value.trim().slice(0, 40);
   const catalog = Object.fromEntries(DEFAULT_OFFERS.map((o) => [o.id, o]));
@@ -98,7 +127,7 @@ $('#newGame').addEventListener('submit', async (e) => {
       await B.set(`games/${c}/meta`, {
         owner: B.uid, title, createdAt: now, status: 'lobby', year: 0, settings,
         allowJoin: true, rankBy: 'nw', view: 'auto', reveal: false, submitted: 0,
-        nextOfferIds: defaultOfferIdsForYear(catalog, 0), controller: tabId,
+        nextOfferIds: drawOffers(catalog, { count: settings.offersPerYear, rate: settings.bankRate }), controller: tabId,
       });
     } catch { continue; }
     await B.set(`games/${c}/catalog`, catalog);
@@ -128,6 +157,7 @@ function openConsole(c) {
   });
 }
 $('#backToGames').onclick = () => { history.replaceState(null, '', location.pathname + (DEMO ? '?demo=1' : '')); showGames(); };
+$('#deleteGame').onclick = () => deleteGame(code);
 $('#takeControl').onclick = () => B.update(`games/${code}/meta`, { controller: tabId });
 
 const isController = () => S?.meta?.controller === tabId;
@@ -165,13 +195,13 @@ function housekeeping() {
 // ---------------------------------------------------------------- game steps
 
 const STEP = {
-  lobby: { label: () => 'Start game: open the Year 0 market', help: 'Students join with the code on the big screen.', run: openMarket },
+  lobby: { label: () => 'Start game: open the Year 0 market', help: 'Students join with the code on the big screen. Year 0 offers are on the left.', run: openMarket },
   open: { label: () => 'Close the market', help: 'Carries out every submitted plan. Students can change plans until then.', run: closeMarket },
   closed: {
     label: (m) => (m.year + 1 >= m.settings.years ? `End Year ${m.year} and finish the game` : `End the year: move to Year ${m.year + 1}`),
     help: 'Pays a year of savings interest and every investment’s cash flow.', run: endYear,
   },
-  results: { label: (m) => `Open the Year ${m.year} market`, help: 'Check the offers on the left first.', run: openMarket },
+  results: { label: (m) => `Open the Year ${m.year} market`, help: 'The offers on the left were drawn at random. Swap any you like first.', run: openMarket },
   ended: { label: () => 'Game over', help: 'Download the results or start a new game.', run: null },
 };
 
@@ -193,6 +223,7 @@ async function openMarket() {
   const ids = m.nextOfferIds.filter((id) => S.catalog[id]);
   await B.update(`games/${code}/meta`, {
     status: 'open', offerIds: ids, submitted: 0, reveal: false, deadline: null, allowJoin: m.allowJoin !== false,
+    [`offered/${m.year}`]: ids,
   });
 }
 
@@ -205,7 +236,7 @@ async function closeMarket() {
     const o = orders[pid];
     let p = p0, orderReport = null;
     if (o && o.round === T) {
-      const res = applyOrder(p0, o, S.catalog, m.offerIds, T);
+      const res = applyOrder(p0, o, S.catalog, m.offerIds, T, m.settings);
       p = res.player;
       orderReport = { year: T, lines: res.lines.length ? res.lines : [{ text: 'Plan carried out', amt: 0 }] };
     }
@@ -230,12 +261,29 @@ async function endYear() {
   const ended = T1 >= m.settings.years;
   ups['meta/year'] = T1;
   ups['meta/status'] = ended ? 'ended' : 'results';
-  ups['meta/nextOfferIds'] = defaultOfferIdsForYear(S.catalog, T1);
+  ups['meta/nextOfferIds'] = nextDraw(m);
+  ups['meta/queued'] = null;
   ups['meta/reveal'] = false;
   ups['meta/submitted'] = 0;
   ups['meta/deadline'] = null;
   ups['orders'] = null;
   await B.update(`games/${code}`, ups);
+}
+
+function offeredBefore(m) {
+  const ids = new Set();
+  for (const list of Object.values(m.offered || {})) for (const id of Object.values(list || {})) ids.add(id);
+  return ids;
+}
+
+// Teacher-added investments waiting for a market go first; the rest is random.
+function nextDraw(m) {
+  const count = m.settings.offersPerYear || DEFAULT_SETTINGS.offersPerYear;
+  const queued = Object.values(m.queued || {}).filter((id) => S.catalog[id]);
+  const used = offeredBefore(m);
+  const pool = Object.fromEntries(Object.entries(S.catalog).filter(([id]) => !queued.includes(id)));
+  const rest = drawOffers(pool, { count: Math.max(0, count - queued.length), exclude: [...used], rate: m.settings.bankRate });
+  return [...queued, ...rest];
 }
 
 $('#endNow').onclick = async () => {
@@ -250,26 +298,16 @@ async function fireEvent(ev) {
   const id = `${T}_${randomId(5)}`;
   const ups = {};
   let rate = m.settings.bankRate;
-  const mods = { ...m.modifiers };
+  const mods = m.modifiers;
   if (ev.kind === 'rate') {
     rate = Math.max(0, r2((rate + ev.delta) * 10000) / 10000);
     ups['meta/settings/bankRate'] = rate;
   }
-  if (ev.kind === 'revenue') {
-    const mod = { tags: ev.tags, factor: ev.factor, from: T + 1, to: ev.duration === 'next' ? T + 1 : 9999, title: ev.title };
-    mods[id] = mod;
-    ups[`meta/modifiers/${id}`] = mod;
-  }
   let affected = 0;
   for (const [pid, p0] of Object.entries(players())) {
     let p = p0, lines = [];
-    if (ev.kind === 'cash') ({ player: p, lines } = applyCash(p0, ev.amount, ev.title));
-    if (ev.kind === 'perShare') {
-      const n = sharesWithTags(p0, S.catalog, ev.tags, T);
-      if (n) ({ player: p, lines } = applyCash(p0, ev.amount * n, `${ev.title} (${n} share${n > 1 ? 's' : ''})`));
-    }
+    if (ev.kind === 'cash') ({ player: p, lines } = applyCash(p0, ev.amount, ev.title, m.settings));
     if (ev.kind === 'rate') lines = [{ text: `${ev.title}: bank rate is now ${pct(rate)}`, amt: 0 }];
-    if (ev.kind === 'revenue' && sharesWithTags(p0, S.catalog, ev.tags, T)) lines = [{ text: ev.title, amt: 0 }];
     if (lines.length) {
       affected++;
       const prev = p.eventReport && p.eventReport.year === T ? Object.values(p.eventReport.lines || {}) : [];
@@ -285,47 +323,42 @@ async function fireEvent(ev) {
   toast(`Event fired: ${ev.title}`);
 }
 
-function renderPresets() {
-  $('#presetList').innerHTML = EVENT_PRESETS.map((e) => `
-    <button class="preset btn-quiet" data-id="${e.id}" title="${esc(e.detail)}">
+let presetsFor = '';
+function renderPresets(settings) {
+  const key = JSON.stringify([settings.startCash]);
+  if (key === presetsFor) return;
+  presetsFor = key;
+  const evs = EVENT_PRESETS.map((e) => resolveEvent(e, settings));
+  $('#presetList').innerHTML = evs.map((e) => `
+    <button class="preset btn-quiet" data-id="${e.id}">
       <b>${esc(e.title)}</b><small>${esc(e.detail)}</small></button>`).join('');
   for (const b of $$('#presetList .preset')) {
     b.onclick = async () => {
-      const ev = EVENT_PRESETS.find((x) => x.id === b.dataset.id);
+      const ev = resolveEvent(EVENT_PRESETS.find((x) => x.id === b.dataset.id), S.meta.settings);
       if (!confirm(`Fire "${ev.title}" now?\n\n${ev.detail}`)) return;
       b.disabled = true;
       try { await fireEvent(ev); } finally { b.disabled = false; }
     };
   }
-  $('#ceTags').innerHTML = Object.entries(TAG_LABELS).map(([t, l]) =>
-    `<label class="check"><input type="checkbox" value="${t}"> ${esc(l)}</label>`).join('');
-  $('#coTag').innerHTML = Object.entries(TAG_LABELS).map(([t, l]) => `<option value="${t}">${esc(l)}</option>`).join('');
-  const kindSync = () => {
-    const k = $('#ceKind').value;
-    $('.ce-tags').classList.toggle('hidden', !['perShare', 'revenue'].includes(k));
-    $('.ce-amount').classList.toggle('hidden', !['cash', 'perShare'].includes(k));
-    $('.ce-factor').classList.toggle('hidden', k !== 'revenue');
-    $('.ce-dur').classList.toggle('hidden', k !== 'revenue');
-    $('.ce-delta').classList.toggle('hidden', k !== 'rate');
-  };
-  $('#ceKind').onchange = kindSync;
-  kindSync();
 }
-renderPresets();
+$('#coTag').innerHTML = Object.entries(TAG_LABELS).map(([t, l]) => `<option value="${t}">${esc(l)}</option>`).join('');
+const kindSync = () => {
+  const k = $('#ceKind').value;
+  $('.ce-amount').classList.toggle('hidden', k !== 'cash');
+  $('.ce-delta').classList.toggle('hidden', k !== 'rate');
+};
+$('#ceKind').onchange = kindSync;
+kindSync();
 
 $('#customEvent').addEventListener('submit', async (e) => {
   e.preventDefault();
   const kind = $('#ceKind').value;
-  const tags = $$('#ceTags input:checked').map((i) => i.value);
   const title = $('#ceTitle').value.trim();
   if (!title) return toast('Give the event a headline.', 'error');
-  if (['perShare', 'revenue'].includes(kind) && !tags.length) return toast('Pick at least one category.', 'error');
   const ev = {
-    kind, tags, title, detail: $('#ceDetail').value.trim(),
+    kind, title, detail: $('#ceDetail').value.trim(),
     amount: Number($('#ceAmount').value) || 0,
-    factor: 1 + (Number($('#ceFactor').value) || 0) / 100,
     delta: (Number($('#ceDelta').value) || 0) / 100,
-    duration: $('#ceDur').value,
   };
   if (!confirm(`Fire "${title}" now?`)) return;
   await fireEvent(ev);
@@ -344,13 +377,15 @@ $('#customOffer').addEventListener('submit', async (e) => {
   if (!(flows[0] < 0)) return (err.textContent = 'Year 0 must be negative: it is the price of one share.');
   err.textContent = '';
   const id = `c_${randomId(6)}`;
-  const nextYear = S.meta.status === 'results' || S.meta.status === 'lobby' ? S.meta.year : S.meta.year + 1;
+  const m = S.meta;
+  const editing = m.status === 'results' || m.status === 'lobby';
   await B.set(`games/${code}/catalog/${id}`, {
-    id, name, tag: $('#coTag').value, blurb: $('#coBlurb').value.trim(), flows, years: [nextYear], custom: true,
+    id, name, tag: $('#coTag').value, blurb: $('#coBlurb').value.trim(), flows, custom: true,
   });
-  await B.update(`games/${code}/meta`, { nextOfferIds: [...S.meta.nextOfferIds, id] });
+  if (editing) await B.update(`games/${code}/meta`, { nextOfferIds: [...m.nextOfferIds, id] });
+  else await B.update(`games/${code}/meta`, { queued: [...Object.values(m.queued || {}), id] });
   $('#customOffer').reset();
-  toast(`${name} added to the Year ${nextYear} market.`);
+  toast(`${name} will be in the Year ${editing ? m.year : m.year + 1} market.`);
 });
 
 // ---------------------------------------------------------------- controls
@@ -369,9 +404,9 @@ for (const b of $$('.timer-row button')) {
 $('#csvBtn').onclick = () => {
   const m = S.meta;
   const years = Array.from({ length: m.year + 1 }, (_, i) => i);
-  const rows = [['Name', 'Net worth', 'Liquid capital', 'Cash', 'Savings', 'Debt', 'Investments', ...years.map((y) => `Net worth Y${y}`)]];
+  const rows = [['Name', 'Net worth', 'Liquid capital', 'Cash', 'Savings', 'Debt', 'Investments', 'Withdrawal penalties paid', ...years.map((y) => `Net worth Y${y}`)]];
   for (const p of Object.values(players()).sort((a, b) => b.nw - a.nw)) {
-    rows.push([p.name, p.nw, p.liq, p.cash, p.savings, p.debt, Object.keys(p.holdings).length, ...years.map((y) => p.history?.[y]?.nw ?? '')]);
+    rows.push([p.name, p.nw, p.liq, p.cash, p.savings, p.debt, Object.keys(p.holdings).length, p.penalties, ...years.map((y) => p.history?.[y]?.nw ?? '')]);
   }
   const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   const a = document.createElement('a');
@@ -396,6 +431,7 @@ function render() {
   $('#rankBy').value = m.rankBy || 'nw';
   $('#viewSel').value = m.view || 'auto';
   $('#allowJoin').checked = m.allowJoin !== false;
+  renderPresets(m.settings);
   renderOffers(m);
   renderRoster(m);
   renderLog(m);
@@ -410,55 +446,79 @@ function runTimer(m) {
   tick(); timerInt = setInterval(tick, 500);
 }
 
+function keyRow(o, rate, { check = null, extra = '', note = '' } = {}) {
+  const k = offerMetrics(o, rate);
+  return `<tr class="${check === true ? 'on' : ''}">
+    ${check != null ? `<td><input type="checkbox" data-id="${esc(o.id)}" ${check ? 'checked' : ''} aria-label="Offer ${esc(o.name)}"></td>` : ''}
+    <td><b>${esc(o.name)}</b>${note ? ` <span class="tag">${esc(note)}</span>` : ''}</td>
+    <td class="r num">${money(unitPrice(o))}</td>
+    <td class="r num">${k.n} yr</td>
+    <td class="r num ${k.pw >= 0 ? 'pos' : 'neg'}">${money(k.pw, { sign: true })}</td>
+    <td class="r num ${k.aw >= 0 ? 'pos' : 'neg'}">${money(k.aw, { sign: true })}</td>
+    <td class="r num">${k.irr == null ? '—' : pct(k.irr)}</td>
+    ${extra}
+  </tr>`;
+}
+const keyHead = (check, extra = '') => `<thead><tr>${check ? '<th></th>' : ''}<th>Investment</th><th class="r">Price</th><th class="r">Life</th>
+  <th class="r">PW</th><th class="r">AW</th><th class="r">IRR</th>${extra}</tr></thead>`;
+
+let swapOpen = false;
 function renderOffers(m) {
   const editing = m.status === 'lobby' || m.status === 'results';
-  const yearShown = m.year;
   const rate = m.settings.bankRate;
-  $('#offersTitle').textContent = editing ? `Offers for the Year ${yearShown} market` : `Year ${yearShown} market`;
+  $('#offersTitle').textContent = editing ? `Offers for the Year ${m.year} market` : `Year ${m.year} market`;
   $('#offersHelp').innerHTML = editing
-    ? 'Tick what students will see. Answer key at the current bank rate. Students never see these numbers unless you reveal them.'
+    ? 'Drawn at random from investments not offered yet. Untick to remove one, or swap one in from the list below. Answer key at the current bank rate; students never see it unless you reveal it.'
     : `Answer key at ${pct(rate)}. ${m.status === 'closed' ? 'Show it on the big screen to discuss.' : ''}`;
-  const ids = editing
-    ? Object.values(S.catalog).sort((a, b) => (a.years[0] ?? 99) - (b.years[0] ?? 99)).map((o) => o.id)
-    : m.offerIds;
-  const bought = {};
+
   if (!editing) {
+    const bought = {};
     for (const p of Object.values(S.players || {})) {
       for (const h of Object.values(p.holdings || {})) if (h.year === m.year) bought[h.offerId] = (bought[h.offerId] || 0) + h.units;
     }
+    const queued = Object.values(m.queued || {}).map((id) => S.catalog[id]).filter(Boolean);
+    $('#offerList').innerHTML = `
+      <table class="key">${keyHead(false, '<th class="r">Bought</th>')}<tbody>${m.offerIds.map((id) => S.catalog[id])
+        .filter(Boolean).map((o) => keyRow(o, rate, { extra: `<td class="r num">${bought[o.id] || 0}</td>` })).join('')}</tbody></table>
+      <label class="check reveal"><input type="checkbox" id="revealBox" ${m.reveal ? 'checked' : ''} ${m.status === 'open' ? 'disabled' : ''}>
+        Show PW, FW, AW and IRR on the big screen${m.status === 'open' ? ' (after the market closes)' : ''}</label>
+      ${queued.length ? `<p class="hint">Added for next year: ${queued.map((o) => esc(o.name)).join(', ')}.</p>` : ''}`;
+    $('#revealBox').onchange = (e) => B.update(`games/${code}/meta`, { reveal: e.target.checked });
+    return;
   }
-  const sel = new Set(m.nextOfferIds);
+
+  const sel = m.nextOfferIds.filter((id) => S.catalog[id]);
+  const usedIn = {};
+  for (const [y, list] of Object.entries(m.offered || {})) for (const id of Object.values(list || {})) usedIn[id] = y;
+  const others = Object.values(S.catalog).filter((o) => !sel.includes(o.id))
+    .sort((a, b) => (a.id in usedIn) - (b.id in usedIn) || a.name.localeCompare(b.name));
+  const count = m.settings.offersPerYear || DEFAULT_SETTINGS.offersPerYear;
   $('#offerList').innerHTML = `
-    ${!editing ? '' : ''}
-    <table class="key"><thead><tr>${editing ? '<th></th>' : ''}<th>Investment</th><th class="r">Price</th><th class="r">Life</th>
-      <th class="r">PW</th><th class="r">AW</th><th class="r">IRR</th>${editing ? '' : '<th class="r">Bought</th>'}</tr></thead>
-    <tbody>${ids.map((id) => {
-      const o = S.catalog[id];
-      if (!o) return '';
-      const k = offerMetrics(o, rate);
-      const sched = (o.years || []).length ? `Y${o.years.join(',')}` : '';
-      return `<tr class="${editing && sel.has(id) ? 'on' : ''}">
-        ${editing ? `<td><input type="checkbox" data-id="${esc(id)}" ${sel.has(id) ? 'checked' : ''} aria-label="Offer ${esc(o.name)}"></td>` : ''}
-        <td><b>${esc(o.name)}</b> <span class="tag">${esc(sched)}</span></td>
-        <td class="r num">${money(unitPrice(o))}</td>
-        <td class="r num">${k.n} yr</td>
-        <td class="r num ${k.pw >= 0 ? 'pos' : 'neg'}">${money(k.pw, { sign: true })}</td>
-        <td class="r num ${k.aw >= 0 ? 'pos' : 'neg'}">${money(k.aw, { sign: true })}</td>
-        <td class="r num">${k.irr == null ? '—' : pct(k.irr)}</td>
-        ${editing ? '' : `<td class="r num">${bought[id] || 0}</td>`}
-      </tr>`;
-    }).join('')}</tbody></table>
-    ${!editing ? `<label class="check reveal"><input type="checkbox" id="revealBox" ${m.reveal ? 'checked' : ''} ${m.status === 'open' ? 'disabled' : ''}>
-      Show PW, FW, AW and IRR on the big screen${m.status === 'open' ? ' (after the market closes)' : ''}</label>` : ''}`;
+    <table class="key">${keyHead(true)}<tbody>${sel.map((id) => keyRow(S.catalog[id], rate, { check: true })).join('')
+      || `<tr><td colspan="7" class="soft">No offers picked. Draw some or swap some in below.</td></tr>`}</tbody></table>
+    <div class="row offer-tools">
+      <button id="redraw" class="btn-quiet btn-sm">Draw ${count} new offers</button>
+      <span class="hint">${sel.length} offered. Unused investments left: ${others.filter((o) => !(o.id in usedIn)).length}</span>
+    </div>
+    <details class="swap" ${swapOpen ? 'open' : ''}>
+      <summary>Swap in another investment</summary>
+      <table class="key">${keyHead(true)}<tbody>${others.map((o) =>
+        keyRow(o, rate, { check: false, note: o.id in usedIn ? `offered in Year ${usedIn[o.id]}` : '' })).join('')}</tbody></table>
+    </details>`;
+  $('details.swap').ontoggle = (e) => { swapOpen = e.target.open; };
   for (const cb of $$('#offerList input[data-id]')) {
     cb.onchange = () => {
-      const next = Object.values(S.catalog).map((o) => o.id)
-        .filter((id) => (id === cb.dataset.id ? cb.checked : sel.has(id)));
+      const id = cb.dataset.id;
+      const next = cb.checked ? [...sel, id] : sel.filter((x) => x !== id);
       B.update(`games/${code}/meta`, { nextOfferIds: next });
     };
   }
-  const rv = $('#revealBox');
-  if (rv) rv.onchange = () => B.update(`games/${code}/meta`, { reveal: rv.checked });
+  $('#redraw').onclick = () => {
+    const used = offeredBefore(m);
+    B.update(`games/${code}/meta`, {
+      nextOfferIds: drawOffers(S.catalog, { count, exclude: [...used, ...sel], rate }),
+    });
+  };
 }
 
 function renderRoster(m) {

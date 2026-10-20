@@ -31,13 +31,23 @@ export function aw(flows, i) {
 }
 // Internal rate of return by bisection (null when there is no sign change).
 export function irr(flows) {
-  let lo = -0.99, hi = 2;
-  let flo = pw(flows, lo), fhi = pw(flows, hi);
-  if (flo * fhi > 0) return null;
+  // Scan outward from 0% for the first sign change (handles flows that turn
+  // negative again at the end, which can have a second, meaningless root).
+  let lo = null, hi = null;
+  const grid = [];
+  for (let r = 0; r <= 2; r += 0.01) grid.push(r);
+  for (let r = -0.01; r >= -0.9; r -= 0.01) grid.push(r);
+  for (const r of grid) {
+    const a = r >= 0 ? r : r + 0.01, b = r >= 0 ? r + 0.01 : r;
+    if (Math.abs(pw(flows, a)) < 1e-9) return a;
+    if (pw(flows, a) * pw(flows, b) < 0) { lo = Math.min(a, b); hi = Math.max(a, b); break; }
+  }
+  if (lo == null) return null;
+  let flo = pw(flows, lo);
   for (let k = 0; k < 200; k++) {
     const mid = (lo + hi) / 2, fm = pw(flows, mid);
     if (Math.abs(fm) < 1e-9) return mid;
-    if (flo * fm < 0) { hi = mid; fhi = fm; } else { lo = mid; flo = fm; }
+    if (flo * fm < 0) { hi = mid; } else { lo = mid; flo = fm; }
   }
   return (lo + hi) / 2;
 }
@@ -58,7 +68,7 @@ export function normCatalog(c) {
 }
 export function normPlayer(p) {
   return {
-    name: '', cash: 0, savings: 0, debt: 0, nw: 0, liq: 0, gain: 0, div: 0,
+    name: '', cash: 0, savings: 0, debt: 0, nw: 0, liq: 0, gain: 0, div: 0, penalties: 0,
     ...p,
     holdings: { ...(p?.holdings || {}) },
     history: { ...(p?.history || {}) },
@@ -119,30 +129,58 @@ export function revalue(p, catalog, T, rate, modifiers) {
   return p;
 }
 
-// Negative cash is covered from savings, then becomes overdraft debt.
-// Any debt is repaid automatically from cash, then savings.
-export function settle(p, lines = []) {
+// ---------- savings withdrawals
+//
+// Taking money out of savings costs an early-withdrawal penalty: a % of the
+// amount withdrawn, deducted from what you receive. This is the downside of
+// the bank: money you will need next year is better kept as cash (0%), while
+// money left for two or more years still comes out ahead.
+
+export const penaltyRate = (settings) => Math.max(0, Math.min(0.5, Number(settings?.withdrawPenalty) || 0));
+const pctText = (r) => `${(r * 100).toFixed(1).replace(/\.0$/, '')}%`;
+
+// Withdraw a gross amount w from savings into cash. Returns the penalty paid.
+export function withdrawGross(p, w, pr, lines, why) {
+  w = r2(Math.min(w, p.savings));
+  if (w <= 0) return 0;
+  const fee = Math.floor(w * pr * 100 + 1e-6) / 100; // rounded in the student's favour
+  p.savings = r2(p.savings - w);
+  p.cash = r2(p.cash + w - fee);
+  lines.push({ text: why, amt: 0, note: w });
+  if (fee > 0) lines.push({ text: `Early-withdrawal penalty (${pctText(pr)})`, amt: -fee });
+  p.penalties = r2((p.penalties || 0) + fee);
+  return fee;
+}
+
+// Withdraw enough from savings to receive `need` in cash (or all of savings).
+export function coverFromSavings(p, need, pr, lines, why) {
+  if (need <= 0 || p.savings <= 0) return 0;
+  const gross = Math.ceil((need / (1 - pr)) * 100 - 1e-6) / 100;
+  return withdrawGross(p, gross, pr, lines, why);
+}
+
+// Biggest amount of cash a player could raise right now (savings net of penalty).
+export function spendable(p, settings) {
+  return r2(p.cash + p.savings * (1 - penaltyRate(settings)) - p.debt);
+}
+
+// Negative cash is covered from savings (with the penalty), then becomes
+// overdraft debt. Debt is repaid automatically from cash as it comes in.
+// (Debt only exists once savings are empty, so savings never need touching.)
+export function settle(p, lines = [], pr = 0) {
   p.cash = r2(p.cash); p.savings = r2(p.savings); p.debt = r2(p.debt);
   if (p.cash < 0) {
-    const take = Math.min(p.savings, -p.cash);
-    if (take > 0) {
-      p.savings = r2(p.savings - take); p.cash = r2(p.cash + take);
-      lines.push({ text: 'Moved from savings to cover a shortfall', amt: 0, note: take });
-    }
+    coverFromSavings(p, -p.cash, pr, lines, 'Not enough cash: withdrew from savings');
     if (p.cash < 0) {
       p.debt = r2(p.debt - p.cash);
       lines.push({ text: 'Cash ran out: borrowed on overdraft', amt: 0, note: -p.cash });
       p.cash = 0;
     }
   }
-  if (p.debt > 0) {
-    for (const src of ['cash', 'savings']) {
-      const pay = Math.min(p[src], p.debt);
-      if (pay > 0) {
-        p[src] = r2(p[src] - pay); p.debt = r2(p.debt - pay);
-        lines.push({ text: `Repaid overdraft from ${src}`, amt: 0, note: pay });
-      }
-    }
+  if (p.debt > 0 && p.cash > 0) {
+    const pay = Math.min(p.cash, p.debt);
+    p.cash = r2(p.cash - pay); p.debt = r2(p.debt - pay);
+    lines.push({ text: 'Repaid overdraft from cash', amt: 0, note: pay });
   }
   return p;
 }
@@ -150,13 +188,17 @@ export function settle(p, lines = []) {
 // ---------- applying a student's plan (at "Close market")
 //
 // order = { round, buys: { offerId: shares }, savingsAll: bool, savingsTarget: number }
-// All liquid money (cash + savings - debt) is pooled, purchases are paid from
-// the pool, then the student's chosen amount goes to savings and the rest is cash.
+//   1. Shares are paid from cash first; anything more comes out of savings (penalty).
+//   2. savingsAll: all leftover cash is deposited.
+//      otherwise savingsTarget is the savings balance the student wants; going
+//      below the current balance is a withdrawal (penalty), above is a deposit.
 
-export function applyOrder(p0, order, catalog, offerIds, T) {
+export function applyOrder(p0, order, catalog, offerIds, T, settings = {}) {
   const p = normPlayer(clone(p0));
+  const pr = penaltyRate(settings);
   const lines = [];
-  let pool = r2(p.cash + p.savings - p.debt);
+  let budget = spendable(p, settings);
+  let spend = 0;
   const buys = order?.buys || {};
   for (const id of offerIds || []) {
     const o = catalog[id];
@@ -164,34 +206,58 @@ export function applyOrder(p0, order, catalog, offerIds, T) {
     let want = Math.max(0, Math.min(1000, Math.floor(Number(buys[id]) || 0)));
     if (!want) continue;
     const price = unitPrice(o);
-    const can = pool > 0 && price > 0 ? Math.floor(pool / price + 1e-9) : 0;
+    const can = budget > 0 && price > 0 ? Math.floor(budget / price + 1e-9) : 0;
     if (want > can) {
       lines.push({ text: `Not enough money for ${want} ${o.name}; bought ${can}`, amt: 0 });
       want = can;
     }
     if (!want) continue;
-    pool = r2(pool - want * price);
+    budget = r2(budget - want * price);
+    spend = r2(spend + want * price);
     const key = `${id}_${T}`;
     const h = p.holdings[key] || { offerId: id, year: T, units: 0 };
     h.units += want;
     p.holdings[key] = h;
     lines.push({ text: `Bought ${want} × ${o.name}`, amt: r2(-want * price) });
   }
-  if (pool < 0) {
-    p.debt = r2(-pool); p.cash = 0; p.savings = 0;
-  } else {
-    p.debt = 0;
-    const target = order?.savingsAll ? pool : Math.max(0, Number(order?.savingsTarget) || 0);
-    p.savings = r2(Math.min(target, pool));
-    p.cash = r2(pool - p.savings);
+  p.cash = r2(p.cash - spend);
+  if (p.cash < 0) coverFromSavings(p, -p.cash, pr, lines, 'Withdrew from savings to pay for shares');
+  if (p.cash < 0 && p.cash > -0.05) p.cash = 0; // rounding dust
+
+  if (order?.savingsAll) {
+    if (p.cash >= 0.01) {
+      lines.push({ text: 'Deposited leftover cash in savings', amt: 0, note: p.cash });
+      p.savings = r2(p.savings + p.cash); p.cash = 0;
+    }
+  } else if (order && order.savingsTarget != null) {
+    const target = Math.max(0, Number(order.savingsTarget) || 0);
+    // Differences under $1 are rounding, not a decision: leave them alone.
+    if (target > p.savings + 0.995) {
+      const dep = r2(Math.min(target - p.savings, p.cash));
+      if (dep >= 1) {
+        p.savings = r2(p.savings + dep); p.cash = r2(p.cash - dep);
+        lines.push({ text: 'Deposited cash in savings', amt: 0, note: dep });
+      }
+    } else if (target < p.savings - 0.995) {
+      withdrawGross(p, p.savings - target, pr, lines, 'Withdrew from savings to cash');
+    }
   }
+  settle(p, lines, pr);
   return { player: p, lines };
+}
+
+// What a plan would cost in penalties (for the student preview).
+export function previewOrder(p, order, catalog, offerIds, T, settings) {
+  const { player, lines } = applyOrder(p, order, catalog, offerIds, T, settings);
+  const fee = lines.filter((l) => /penalty/i.test(l.text)).reduce((s, l) => s - l.amt, 0);
+  return { player, lines, fee: r2(fee) };
 }
 
 // ---------- end of year T -> T+1
 
 export function yearEnd(p0, catalog, T, settings, modifiers) {
   const p = normPlayer(clone(p0));
+  const pr = penaltyRate(settings);
   const lines = [];
   const t1 = T + 1;
   if (p.savings > 0) {
@@ -215,7 +281,7 @@ export function yearEnd(p0, catalog, T, settings, modifiers) {
     }
     if (done) delete p.holdings[key];
   }
-  settle(p, lines);
+  settle(p, lines, pr);
   return { player: p, lines };
 }
 
@@ -230,12 +296,51 @@ export function sharesWithTags(p, catalog, tags, T) {
   return n;
 }
 
-export function applyCash(p0, amount, text) {
+export function applyCash(p0, amount, text, settings = {}) {
   const p = normPlayer(clone(p0));
   const lines = [{ text, amt: r2(amount) }];
   p.cash = r2(p.cash + amount);
-  settle(p, lines);
+  settle(p, lines, penaltyRate(settings));
   return { player: p, lines };
+}
+
+// ---------- random market draw
+//
+// Picks `count` offers not shown in earlier years (repeats only once the pool
+// runs out). At most one offer with negative PW at the current bank rate
+// (two when 5+ offers are shown), and at least one when the pool has any,
+// so every market has a trap for the class to find.
+
+function shuffle(arr, rng) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+export function drawOffers(catalog, { count = 4, exclude = [], rate = 0.05, rng = Math.random } = {}) {
+  const all = Object.values(catalog);
+  let pool = all.filter((o) => !exclude.includes(o.id));
+  if (pool.length < count) pool = [...pool, ...shuffle(all.filter((o) => exclude.includes(o.id)), rng)].slice(0, Math.max(count, pool.length));
+  const mixed = shuffle(pool, rng);
+  const isTrap = (o) => pw(toArr(o.flows), rate) < 0;
+  const maxTraps = count >= 5 ? 2 : 1;
+  const pick = [];
+  const firstTrap = mixed.find(isTrap);
+  if (firstTrap && count >= 3) pick.push(firstTrap);
+  for (const o of mixed) {
+    if (pick.length >= count) break;
+    if (pick.includes(o)) continue;
+    if (isTrap(o) && pick.filter(isTrap).length >= maxTraps) continue;
+    pick.push(o);
+  }
+  for (const o of mixed) { // pool too small for the trap limit: fill anyway
+    if (pick.length >= count) break;
+    if (!pick.includes(o)) pick.push(o);
+  }
+  return shuffle(pick, rng).map((o) => o.id);
 }
 
 // ---------- ranking

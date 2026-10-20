@@ -55,12 +55,13 @@ function render() {
   maybeAnnounce(m);
 
   const view = m.status === 'lobby' ? 'lobby'
-    : m.status === 'ended' ? 'final'
+    : m.status === 'ended' ? (m.view === 'top5' ? 'top5' : 'final')
     : m.view && m.view !== 'auto' ? m.view
-    : m.status === 'open' || m.status === 'closed' ? 'market' : 'board';
+    : m.status === 'open' || m.status === 'closed' ? 'market' : 'top5';
   const html = view === 'lobby' ? lobby(m)
     : view === 'final' ? finalBoard(m)
     : view === 'market' ? market(m)
+    : view === 'top5' ? top5(m)
     : board(m);
   if (html !== lastStage) { $('#stage').innerHTML = html; lastStage = html; }
 }
@@ -177,6 +178,27 @@ function newsList(m) {
   const evs = [...eventsForYear(m, y), ...(y !== m.year ? eventsForYear(m, m.year) : [])];
   if (!evs.length) return '';
   return `<div class="sheet news-list"><h3>${m.status === 'results' ? `News from Year ${y}` : 'News this year'}</h3>${evs.map((e) => `<p><b>${esc(e.title)}.</b> ${esc(e.detail)}</p>`).join('')}</div>`;
+}
+
+// ---------- top 5 in every category (names only, no values)
+function top5(m) {
+  const cols = Object.entries(RANKINGS).map(([key, R]) => {
+    const list = rank(S.players, key).slice(0, 5);
+    return `<section class="sheet t5col">
+      <h2>${esc(R.label)}</h2>
+      <p class="t5help">${esc(R.help.replace(/ \(.*\)$/, ''))}</p>
+      ${list.length ? `<ol class="t5list">${list.map((p) => `
+        <li class="${p.place === 1 ? 'first' : ''}"><span class="place">${p.place}</span>
+          <span class="nm">${p.place === 1 ? `<span class="hl">${esc(p.name)}</span>` : esc(p.name)}</span></li>`).join('')}</ol>`
+        : '<p class="soft">No players yet.</p>'}
+    </section>`;
+  }).join('');
+  const title = m.status === 'ended' ? `Top 5 after ${m.year} years` : m.year > 0 ? `Top 5 after Year ${m.year - 1}` : 'Top 5';
+  return `<section class="top5-view">
+    <h1 class="t5title">${title}</h1>
+    <div class="t5grid">${cols}</div>
+    ${newsList(m) ? `<div class="t5news">${newsList(m)}</div>` : ''}
+  </section>`;
 }
 
 // ---------- leaderboard

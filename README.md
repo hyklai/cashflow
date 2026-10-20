@@ -1,11 +1,11 @@
 # Cash Flow Challenge
 
-A classroom game for introductory engineering economics. Each student starts with the same money. Every "year" they choose between bank savings, bonds and engineering projects shown as cash-flow diagrams. The big screen ranks the class by net worth (or liquid capital, gain, or diversification), and the teacher sets the pace and fires surprise events.
+A classroom game for introductory engineering economics. Each student starts with the same money. Every "year" they choose between bank savings and a few randomly drawn investments shown as cash-flow diagrams. The big screen shows the top 5 in net worth, liquid capital, gain and diversification, and the teacher sets the pace and fires surprise events.
 
 | Page | Who uses it | What it does |
 |---|---|---|
-| `teacher.html` | You, on your laptop | Create a game, open/close each year's market, fire events, see the answer key |
-| `display.html` | The projector | Join code + QR, cash-flow diagrams, answer reveal, leaderboard, event announcements |
+| `teacher.html` | You, on your laptop | Create and delete games, open/close each year's market, swap offers, fire events, see the answer key |
+| `display.html` | The projector | Join code + QR, cash-flow diagrams, answer reveal, Top 5 boards, event announcements |
 | `student.html` | Students' phones | Join, buy shares, choose savings, submit a plan, see their money and rank |
 
 The site is plain HTML and JavaScript (no build step), hosted on GitHub Pages. Data lives in Firebase Realtime Database.
@@ -34,8 +34,10 @@ Go to <https://console.firebase.google.com>, click **Create a project**, and giv
 **Build → Realtime Database → Create database.** Pick a location and start in **locked mode**.
 Open the **Rules** tab, replace everything with the contents of `database.rules.json`, and click **Publish**.
 
+> **Already set up with the first version?** Paste and publish `database.rules.json` again. The new rules add permission for you to delete your own games; without them **Delete** gives a permission error.
+
 The rules are what stop students from giving themselves money:
-- Only the teacher who created a game can change balances, the market, or events.
+- Only the teacher who created a game can change balances, the market, or events, or delete the game.
 - A student can only write their own plan, and only while the market is open.
 - A name can only be reclaimed with the matching PIN.
 
@@ -67,6 +69,8 @@ Open `https://YOUR-USERNAME.github.io/REPO-NAME/teacher.html` and click **Create
    - number of years (8)
    - bank rate (5%), which is the interest rate students should use for PW, FW and AW
    - overdraft rate (15%)
+   - savings withdrawal penalty (5%)
+   - investments offered each year (4)
 2. **Projector:** click **Open big-screen display**. Students scan the QR code or type the URL and game code.
 3. **Students join** with a name and a 4-digit PIN they make up. If a phone dies or they switch devices, they sign in again with the **same name and PIN** and get their money back. On the same phone, reloading puts them straight back in. If someone forgets their PIN, click **New PIN** next to their name.
 4. **Each year** the big button at the top of the console walks you through four steps:
@@ -76,69 +80,87 @@ Open `https://YOUR-USERNAME.github.io/REPO-NAME/teacher.html` and click **Create
    | Open the market | Students see this year's offers and build a plan. Plans can be changed until you close. A timer is optional. |
    | Close the market | Every submitted plan is carried out. Students who didn't submit keep what they had. Tick **Show PW, FW, AW and IRR on the big screen** to discuss which offers were good deals. |
    | End the year | Savings earn a year of interest, every investment pays its cash flow, and the leaderboard updates. |
-   | Check the next year's offers | Defaults are filled in, but you can tick or untick any investment, or add your own. |
+   | Check the next year's offers | They are drawn at random. Untick any, click **Draw 4 new offers**, swap one in from the full list, or add your own. |
 
-5. **Events** can be fired at any time from the middle column, and they flash on the big screen. They are the only uncertainty in the game; without them every investment pays exactly what its diagram shows. Preset events:
-   - interest rates up or down
-   - emergency expense
-   - tax refund
-   - recession
-   - energy boom
-   - tech bust
-   - equipment breakdown
+5. **Events** can be fired at any time from the middle column, and they flash on the big screen. Every event hits the whole class the same way. They are the only uncertainty in the game; without them every investment pays exactly what its diagram shows. Preset events:
+   - interest rates up 2% / down 2%
+   - car repair bill: everyone pays 5% of starting money ($500 by default)
+   - tax refund: everyone receives 5% of starting money
 
-   You can also build a custom one.
-6. **End of game:** final net worth podium. **Download results (CSV)** gives each student's net worth by year.
+   A custom event can charge or pay any amount of cash, or move the bank rate.
+6. **Big screen:** on *Automatic* it shows the market during the year, and after each year it shows **Top 5 in every category**: four lists (net worth, liquid capital, gain last year, diversification) with names only, no dollar amounts. **Big screen shows** lets you force a view, including the old leaderboard with values.
+7. **End of game:** final net worth podium. Pick *Top 5 in every category* to show names only instead. **Download results (CSV)** gives each student's net worth by year and the penalties they paid.
+8. **Cleaning up:** on the **Your games** page each saved game has a **Delete** button (there's also **Delete game** in the console). Deleting removes the game and all student data from Firebase, which keeps the free plan's storage from filling up. Students and the display still connected see "This game has been deleted".
 
 Keep the teacher console open during the game. It is the referee that adds new students and applies plans. If you open the game in a second teacher window, the first one pauses itself.
 
 ## How the money works
 
 - **Timing.** The textbook end-of-year convention: in the Year *T* market you pay for purchases at time *T*, and the share pays its cash flow at the end of each following year.
-- **Cash earns 0%.** Bank savings earn the bank rate, compounded yearly, and can be withdrawn in any market.
+- **Cash earns 0%.** Bank savings earn the bank rate, compounded yearly.
+- **Taking money out of savings costs a penalty** (5% by default) on the amount withdrawn. That includes buying shares with savings money and bills that cash can't cover. So a dollar saved for one year and then withdrawn comes back as $0.9975, less than cash. A dollar left for two years comes back as $1.047, more than cash. Students have to think about *when* they will need money instead of saving everything. Shares are paid from cash first, and only the rest comes out of savings. The plan screen shows the penalty before they submit.
 - **Shares cannot be sold.** That is why net worth and liquid capital can rank students differently.
-- **Running out of cash.** If an event or a payment due (for example the College Savings Plan) needs more cash than a student has, it comes from savings first. After that the student goes into overdraft at the overdraft rate. Overdraft is repaid automatically as cash comes in.
-- **Net worth** = cash + savings − overdraft + the present worth of each investment's remaining cash flows at the current bank rate. So buying a share with negative PW lowers net worth the moment the market closes. Raising the bank rate also lowers the value of fixed payments students already own.
+- **Running out of cash.** If an event or a payment due (for example the College Savings Plan) needs more cash than a student has, it comes from savings first, with the penalty. After that the student goes into overdraft at the overdraft rate. Overdraft is repaid automatically as cash comes in.
+- **Net worth** = cash + savings (at full balance) − overdraft + the present worth of each investment's remaining cash flows at the current bank rate. So buying a share with negative PW lowers net worth the moment the market closes. Raising the bank rate also lowers the value of fixed payments students already own.
 - **Students never see PW, FW, AW or IRR for an offer.** They get the cash-flow diagram (and a table) and the bank rate, and must work it out. The answer key is in your console, and the big-screen reveal is up to you.
 
-## Default investments (answer key at 5%)
+## Investments (answer key at 5%)
 
-Prices are per share.
+Each year's market is drawn at random from these 38 investments. An investment isn't repeated until every one has been offered. Each market includes one investment with a negative PW (a "trap") while any are left. Prices are per share.
 
-| Year | Investment | Price | Life (yr) | PW | AW | IRR |
+| Investment | Category | Price | Life (yr) | PW | AW | IRR |
 |---|---|---|---|---|---|---|
-| 0 | Savings Bond | $1,000 | 8 | +$56 | +$9 | 5.7% |
-| 0 | Certificate of Deposit | $1,000 | 8 | +$79 | +$12 | 6.0% |
-| 0 | Taco Truck | $2,000 | 4 | +$457 | +$129 | 13.7% |
-| 0 | Crypto Mining Rig | $2,000 | 3 | −$94 | −$34 | 2.5% |
-| 1 | Community Solar Farm | $3,000 | 10 | +$475 | +$61 | 8.1% |
-| 1 | Phone Repair Kiosk | $1,500 | 4 | +$273 | +$77 | 12.6% |
-| 2 | 3D Printing Startup | $2,500 | 5 | +$401 | +$93 | 9.2% |
-| 2 | Vending Machines | $1,000 | 5 | +$126 | +$29 | 9.4% |
-| 2 | Billboard Lease | $1,200 | 3 | −$111 | −$41 | 0.0% |
-| 3 | College Savings Plan | $500 + 3×$500 | 4 | +$72 | +$20 | 6.6% |
-| 3 | Drone Delivery Pilot | $4,000 | 4 | +$610 | +$172 | 11.4% |
-| 3 | Laundromat Upgrade | $1,800 | 5 | +$148 | +$34 | 7.9% |
-| 4 | Wind Turbine Share | $2,500 | 8 | +$85 | +$13 | 5.8% |
-| 4 | Equipment Rental | $1,800 | 3 | +$106 | +$39 | 8.1% |
-| 5 | Treasury Note | $1,000 | 3 | +$19 | +$7 | 5.7% |
-| 5 | Sandwich Franchise | $5,000 | 5 | +$195 | +$45 | 6.4% |
-| 5 | Hydroponic Greenhouse | $1,200 | 3 | +$40 | +$15 | 6.4% |
-| 6 | Pop-up Shop | $1,000 | 1 | +$95 | +$100 | 15.0% |
-| 6 | Concert Promotion | $2,000 | 2 | +$45 | +$24 | 6.6% |
-| 6 | LED Lighting Retrofit | $1,500 | 2 | +$80 | +$43 | 8.8% |
-| 7 | Used-Car Flip | $3,000 | 1 | +$86 | +$90 | 8.0% |
-| 7 | Phone Resale | $1,000 | 1 | −$10 | −$10 | 4.0% |
+| 3D Printing Startup | Tech | $2,500 | 5 | +$401 | +$93 | 9.2% |
+| App Studio | Tech | $3,000 | 4 | +$105 | +$30 | 6.2% |
+| Bike-Share Station | Business | $1,500 | 5 | +$102 | +$24 | 7.4% |
+| Billboard Lease | Business | $1,200 | 3 | −$111 | −$41 | 0.0% |
+| Campus Coffee Cart | Food | $800 | 3 | +$44 | +$16 | 7.9% |
+| Certificate of Deposit | Bonds and deposits | $1,000 | 8 | +$79 | +$12 | 6.0% |
+| City Bond | Bonds and deposits | $1,000 | 5 | +$43 | +$10 | 6.0% |
+| College Savings Plan | Bonds and deposits | $500 | 4 | +$72 | +$20 | 6.6% |
+| Community Solar Farm | Energy | $3,000 | 10 | +$475 | +$61 | 8.1% |
+| Concert Promotion | Business | $2,000 | 2 | +$45 | +$24 | 6.6% |
+| Corporate Bond | Bonds and deposits | $1,000 | 5 | −$43 | −$10 | 4.0% |
+| Crypto Mining Rig | Tech | $2,000 | 3 | −$94 | −$34 | 2.5% |
+| Delivery App Shares | Tech | $1,000 | 4 | +$70 | +$20 | 6.8% |
+| Drone Delivery Pilot | Tech | $4,000 | 4 | +$610 | +$172 | 11.4% |
+| E-Scooter Fleet | Tech | $2,500 | 4 | −$24 | −$7 | 4.4% |
+| Equipment Rental | Business | $1,800 | 3 | +$106 | +$39 | 8.1% |
+| Geothermal Heat Pump | Energy | $2,500 | 12 | +$159 | +$18 | 6.1% |
+| Grid Battery Storage | Energy | $4,000 | 6 | +$123 | +$24 | 5.8% |
+| Gym Equipment Lease | Business | $2,000 | 3 | −$76 | −$28 | 2.7% |
+| Hydroponic Greenhouse | Food | $1,200 | 3 | +$40 | +$15 | 6.4% |
+| Laundromat Upgrade | Business | $1,800 | 5 | +$148 | +$34 | 7.9% |
+| LED Lighting Retrofit | Energy | $1,500 | 2 | +$80 | +$43 | 8.8% |
+| Phone Repair Kiosk | Business | $1,500 | 4 | +$273 | +$77 | 12.6% |
+| Phone Resale | Tech | $1,000 | 1 | −$10 | −$10 | 4.0% |
+| Pop-up Shop | Business | $1,000 | 1 | +$95 | +$100 | 15.0% |
+| Rental Duplex Share | Business | $6,000 | 6 | +$269 | +$53 | 5.9% |
+| Rooftop Garden | Food | $1,000 | 5 | −$12 | −$3 | 4.7% |
+| Sandwich Franchise | Food | $5,000 | 5 | +$195 | +$45 | 6.4% |
+| Savings Bond | Bonds and deposits | $1,000 | 8 | +$56 | +$9 | 5.7% |
+| Taco Truck | Food | $2,000 | 4 | +$457 | +$129 | 13.7% |
+| Treasury Note | Bonds and deposits | $1,000 | 3 | +$19 | +$7 | 5.7% |
+| Tutoring Business | Business | $500 | 3 | +$45 | +$16 | 9.7% |
+| Used-Car Flip | Business | $3,000 | 1 | +$86 | +$90 | 8.0% |
+| Vending Machines | Business | $1,000 | 5 | +$126 | +$29 | 9.4% |
+| Wedding Photo Booth | Business | $900 | 3 | +$17 | +$6 | 6.1% |
+| Wind Turbine Share | Energy | $2,500 | 8 | +$85 | +$13 | 5.8% |
+| Winter Ice Rink | Business | $1,200 | 1 | $0 | $0 | 5.0% |
+| Zero-Coupon Bond | Bonds and deposits | $760 | 5 | +$24 | +$5 | 5.6% |
 
-Built-in teaching moments:
-- **Simple vs. compound (Year 0).** The 7% simple bond loses to the 6% compound CD over 8 years: $1,560 vs $1,593.85.
+Traps: Billboard Lease, Corporate Bond, Crypto Mining Rig, E-Scooter Fleet, Gym Equipment Lease, Phone Resale, Rooftop Garden. The Winter Ice Rink is exactly break-even (PW = $0, IRR = 5%).
+
+Teaching moments to watch for (swap them in if the draw doesn't bring them):
+- **Simple vs. compound.** The 7% simple Savings Bond loses to the 6% compound Certificate of Deposit over 8 years: $1,560 vs $1,593.85.
 - **Total cash isn't value.** The Crypto Mining Rig and Billboard Lease pay back more than they cost, but have negative PW at 5%.
-- **Different lives (Year 1).** The Solar Farm has the bigger PW, the Kiosk the bigger AW and IRR.
-- **Uneven cash flows.** The 3D Printing Startup needs a second payment, and the Greenhouse pays nothing in year 1.
-- **Future worth of a series.** The College Savings Plan commits students to future payments, so watch for overdrafts.
-- **A big price is not a big return.** The Sandwich Franchise costs $5,000 for only +$195 of PW.
+- **Coupon vs. bank rate.** The City Bond (6% coupon) beats the bank; the Corporate Bond (4%) doesn't.
+- **Different lives.** The Solar Farm has a bigger PW than the Phone Repair Kiosk, but the Kiosk has the bigger AW and IRR.
+- **Gradients and uneven flows.** App Studio (growing), Gym Equipment Lease (shrinking), 3D Printing Startup (second payment), Rooftop Garden (deferred).
+- **Salvage and disposal.** Taco Truck and Rental Duplex end with a resale; the E-Scooter Fleet ends with a recycling cost.
+- **Future worth of a series.** The College Savings Plan commits students to future payments, so watch for penalties and overdrafts.
 
-To change the defaults, edit `js/catalog.js`: each investment is just a list of cash flows for one share. You can also add investments during a game from the console.
+To change the list, edit `js/catalog.js`: each investment is just a list of cash flows for one share. You can also add investments during a game from the console (**Add your own investment**). They go into the next market.
 
 ## Files
 
@@ -148,7 +170,7 @@ teacher.html, student.html, display.html
 css/                  style.css (shared) + one file per screen
 js/config.js          your Firebase settings
 js/engine.js          all game math (interest, cash flows, PW/FW/AW/IRR, ranking)
-js/catalog.js         default investments and events
+js/catalog.js         investments, default settings and events
 js/backend.js         Firebase + demo-mode storage
 js/cfd.js             cash-flow diagram drawing
 js/game.js, util.js   shared helpers

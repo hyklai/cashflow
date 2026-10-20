@@ -3,7 +3,7 @@
 .games-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 12px; align-items: start; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
 .game-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
-.game-list button { width: 100%; justify-content: flex-start; gap: 12px; }
+.game-list .open { width: 100%; justify-content: flex-start; gap: 12px; }
 .game-list .soft { margin-left: auto; font-weight: 500; }
 
 .cbar {
@@ -59,3 +59,12 @@ details.custom form { margin-top: 8px; }
 .links { margin-top: 14px; }
 
 .overlay { position: fixed; inset: 0; background: rgba(29, 42, 68, .55); display: grid; place-items: center; z-index: 30; padding: 20px; }
+.game-row { display: flex; gap: 8px; align-items: stretch; }
+.game-row .open { flex: 1; justify-content: flex-start; flex-wrap: wrap; text-align: left; gap: 4px 10px; }
+.game-row .open .gt { font-weight: 550; }
+.game-row .open .soft { margin-left: auto; }
+.game-row .del { min-height: 44px; }
+.offer-tools { margin: 10px 0 2px; }
+details.swap { margin-top: 8px; }
+details.swap summary { font-weight: 650; cursor: pointer; padding: 6px 0; }
+details.swap .key { margin-top: 4px; }

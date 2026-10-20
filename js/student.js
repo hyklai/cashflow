@@ -1,7 +1,7 @@
 import { createBackend, DEMO, sessionStore } from './backend.js';
 import { watchGame, STATUS_TEXT } from './game.js';
 import {
-  applyOrder, normPlayer, unitPrice, holdingValue, holdingEnd, rank, RANKINGS, r2,
+  previewOrder, spendable, penaltyRate, normPlayer, unitPrice, holdingValue, holdingEnd, rank, RANKINGS, r2,
 } from './engine.js';
 import { TAG_LABELS } from './catalog.js';
 import { cfdSVG, flowTable } from './cfd.js';
@@ -185,8 +185,8 @@ function defaultDraft(m, p) {
       amount: o.savingsAll ? 0 : Number(o.savingsTarget) || 0,
     };
   }
-  // Default plan = leave things as they are.
-  return { round: m.year, buys: {}, mode: p.cash < 1 ? 'all' : 'amount', amount: r2(p.savings) };
+  // Default plan = leave savings where they are.
+  return { round: m.year, buys: {}, mode: 'amount', amount: r2(p.savings) };
 }
 
 function draftOrder() {
@@ -232,24 +232,26 @@ function renderMarket(m, p) {
 function marketHtml(m) {
   const offers = m.offerIds.map((id) => S.catalog[id]).filter(Boolean);
   const rate = m.settings.bankRate;
+  const pen = penaltyRate(m.settings);
   return `
     <div class="intro">
       <h2>Year ${m.year} market</h2>
       <p class="soft">Choose what to buy. Diagrams show the cash flows for <b>one share</b>, at the end of each year after you buy.
-      The bank pays <b>${pct(rate)}</b> a year on savings, compounded yearly. Cash pays nothing.</p>
+      The bank pays <b>${pct(rate)}</b> a year on savings, compounded yearly${pen ? `, but taking money out costs a <b>${pct(pen)}</b> penalty` : ''}. Cash pays nothing.</p>
     </div>
     ${offers.map((o) => offerCard(o)).join('')}
     <div class="sheet savings-card">
       <h3>Bank savings · ${pct(rate)} a year</h3>
-      <p class="soft">After buying, what should happen to your leftover money? You can withdraw savings any year.</p>
+      <p class="soft">${pen ? `Every dollar you take out of savings costs a ${pct(pen)} penalty, including money taken out to buy shares or to cover a bill.
+        Cash earns nothing but is free to use.` : 'You can take money out of savings any year.'}</p>
       <div class="seg" role="radiogroup" aria-label="Savings choice">
-        <button type="button" role="radio" data-mode="all">Save all of it</button>
-        <button type="button" role="radio" data-mode="amount">Save an amount</button>
+        <button type="button" role="radio" data-mode="all">Save all leftover cash</button>
+        <button type="button" role="radio" data-mode="amount">Choose a savings balance</button>
       </div>
       <div class="field amount-field">
-        <label for="savAmt">Amount to keep in savings</label>
+        <label for="savAmt">Savings balance after this plan</label>
         <input id="savAmt" type="number" min="0" step="100" inputmode="decimal">
-        <p class="hint">The rest stays as cash. Use 0 to keep everything as cash.</p>
+        <p class="hint" id="savHint"></p>
       </div>
     </div>`;
 }
@@ -292,8 +294,9 @@ function wireMarket(m) {
 function updatePlan(fromInput = false) {
   const m = S.meta, p = normPlayer(S.players[me.pid]);
   const order = draftOrder();
-  const res = applyOrder(p, order, S.catalog, m.offerIds, m.year).player;
-  const liquid = r2(p.cash + p.savings - p.debt);
+  const { player: res, fee } = previewOrder(p, order, S.catalog, m.offerIds, m.year, m.settings);
+  const pen = penaltyRate(m.settings);
+  const liquid = spendable(p, m.settings);
   let spend = 0;
   for (const card of $$('.offer')) {
     const id = card.dataset.id, o = S.catalog[id], n = draft.buys[id] || 0, price = unitPrice(o);
@@ -311,15 +314,18 @@ function updatePlan(fromInput = false) {
   for (const b of $$('.seg button')) b.setAttribute('aria-checked', String(b.dataset.mode === draft.mode));
   $('.amount-field').classList.toggle('hidden', draft.mode !== 'amount');
   if (!fromInput && draft.mode === 'amount') $('#savAmt').value = Math.round(draft.amount);
+  $('#savHint').textContent = `You have ${money(p.cash)} cash and ${money(p.savings)} in savings now. `
+    + (pen ? `Going below ${money(p.savings)} costs a ${pct(pen)} penalty on the difference. ` : '')
+    + 'Whatever you don\u2019t save stays as cash.';
 
   const submitted = sameOrder(S.myOrder, order);
   const over = left < 0;
   $('#planBar').innerHTML = `
     <div class="plan-nums">
-      <div><small>To use</small><span class="num">${money(liquid)}</span></div>
       <div><small>Buying</small><span class="num">${money(spend)}</span></div>
+      <div><small>Penalty</small><span class="num ${fee > 0 ? 'fee' : ''}">${money(fee)}</span></div>
       <div><small>Savings</small><span class="num">${money(res.savings)}</span></div>
-      <div><small>Cash</small><span class="num ${res.cash > 0 ? 'idle' : ''}">${money(res.cash)}</span></div>
+      <div><small>Cash</small><span class="num">${money(res.cash)}</span></div>
     </div>
     <div class="plan-act">
       <span class="plan-state ${submitted ? 'ok' : ''}">${over ? 'Not enough money for this plan'
@@ -406,6 +412,7 @@ function renderPortfolio(m, p) {
         <div><dt>Investments</dt><dd class="num">${money(invVal)}</dd></div>
       </dl>
       <p class="hint">Investments count at their present worth: what their remaining payments are worth today at the ${pct(rate)} bank rate.</p>
+      ${p.penalties > 0 ? `<p class="hint">You have paid <b class="neg">${money(p.penalties)}</b> in savings withdrawal penalties so far.</p>` : ''}
     </div>
     <h2 class="section-title">Investments</h2>
     ${hs.length ? hs.map((h) => {

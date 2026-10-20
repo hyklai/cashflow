@@ -8,6 +8,7 @@
     },
     "games": {
       "$code": {
+        ".write": "auth != null && auth.provider !== 'anonymous' && data.child('meta/owner').val() === auth.uid && !newData.exists()",
         "meta": {
           ".read": "auth != null",
           ".write": "auth != null && auth.provider !== 'anonymous' && (data.exists() ? data.child('owner').val() === auth.uid : newData.child('owner').val() === auth.uid)"

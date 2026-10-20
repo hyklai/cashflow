@@ -115,3 +115,20 @@ body.display { font-size: clamp(16px, 1.25vw, 24px); background-size: 28px 28px;
   .bars li { grid-template-columns: 1.6em 6em 1fr 6em; }
   .bars .chg { display: none; }
 }
+
+/* top 5 in every category: names only */
+.t5title { font-size: 2.2em; margin: .1em 0 .5em; }
+.t5grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1em; align-items: start; }
+.t5col { padding: 1em 1.1em 1.2em; }
+.t5col h2 { font-size: 1.45em; margin: 0; }
+.t5help { color: var(--ink-soft); font-size: .8em; margin: .2em 0 .7em; min-height: 2.6em; line-height: 1.3; }
+.t5list { list-style: none; padding: 0; margin: 0; display: grid; gap: .1em; }
+.t5list li { display: grid; grid-template-columns: 1.4em 1fr; gap: .5em; align-items: baseline; padding: .35em 0; border-bottom: 1px solid var(--line); font-size: 1.3em; }
+.t5list li:last-child { border-bottom: 0; }
+.t5list .place { font-weight: 800; color: var(--ink-soft); text-align: right; }
+.t5list .nm { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.t5list li.first { font-size: 1.55em; }
+.t5list li.first .place { color: var(--ink); }
+.t5news { margin-top: 1em; max-width: 900px; }
+@media (max-width: 1100px) { .t5grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .t5grid { grid-template-columns: 1fr; } }
